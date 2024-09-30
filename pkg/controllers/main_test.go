@@ -26,13 +26,12 @@ func TestMain(m *testing.M) {
 		testEnv.Setup(
 			envfuncs.CreateCluster(kindCluster, kindClusterName),
 		)
-	}
-	exitVal := testEnv.Run(m)
-
-	if os.Getenv("RUN_INTEGRATION_TESTS") == "true" {
+		exitVal := testEnv.Run(m)
 		testEnv.Finish(
 			envfuncs.DestroyCluster(kindClusterName),
 		)
+		os.Exit(exitVal)
+	} else {
+		os.Exit(m.Run())
 	}
-	os.Exit(exitVal)
 }
