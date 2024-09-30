@@ -1,0 +1,2 @@
+stack_name: k8s-traffic-controller-iam-role
+template_path: templates/iam-role.yaml

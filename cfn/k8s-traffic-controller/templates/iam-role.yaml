@@ -1,0 +1,51 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description:
+  Dummy IAM Role for the traffic-controller app
+
+Outputs:
+  TrafficControllerRoleArn:
+    Value: !GetAtt K8sTrafficControllerRole.Arn
+    Description: IAM role with required access for traffic-controller
+  TrafficControllerRoleName:
+    Value: !Ref K8sTrafficControllerRole
+    Description: IAM role name with required access for traffic-controller
+
+Resources:
+  K8sTrafficControllerRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              AWS:
+                - !Sub "arn:aws:iam::${AWS::AccountId}:root"  # Self account
+            Action:
+              - "sts:AssumeRole"
+      Path: "/"
+      ManagedPolicyArns:
+        - !Ref 'IAMManagedPolicyTrafficControl'
+      Policies:
+        - PolicyName: "AssumeRolePolicyDocument"
+          PolicyDocument:
+            Statement:
+              - Action:
+                  - "iam:GetRole"
+                Effect: "Allow"
+                Resource: '*'
+
+  IAMManagedPolicyTrafficControl:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: 'IAMManagedPolicyTrafficControl'
+      Path: /
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Action:
+              - dynamodb:*
+            Effect: Allow
+            Resource: !Sub "arn:aws:dynamodb:eu-west-1:${AWS::AccountId}:table/k8s-traffic-controller"
+ 
