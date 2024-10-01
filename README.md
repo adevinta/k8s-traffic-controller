@@ -1,4 +1,4 @@
-# traffic-controller
+# k8s-traffic-controller
 An operator that enables flexible multi-cluster routing using DNS.
 
 This operators will listen for changes on External DNS endpoints (currently doing no action) and Ingress objects.
