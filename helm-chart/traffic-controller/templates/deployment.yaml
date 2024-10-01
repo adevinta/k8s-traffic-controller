@@ -1,0 +1,72 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    control-plane: controller-manager
+  name: "{{ .Release.Name }}-controller-manager"
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      control-plane: controller-manager
+  template:
+    metadata:
+      annotations:
+        ad.datadoghq.com/manager.check_names: '["prometheus"]'
+        ad.datadoghq.com/manager.init_configs: '[{}]'
+        ad.datadoghq.com/manager.instances: |
+          [
+              {
+                "prometheus_url": "http://%%host%%:8080/metrics",
+                "namespace": "traffic-controller",
+                "tags": [
+                    "instance:traffic-controller"
+                ],
+                "metrics": [
+                    "cluster_traffic_controller_ingress_weight_desired",
+                    "cluster_traffic_controller_ingress_weight_current"
+                ]
+            }
+          ]
+{{- if .Values.iam.role }}
+        iam.amazonaws.com/role: {{ .Values.iam.role }}
+{{- end }}
+      labels:
+        control-plane: controller-manager
+    spec:
+      {{- if .Values.priorityClassName }}
+      priorityClassName: {{ .Values.priorityClassName }}
+      {{- end }}
+      containers:
+      - args:
+        - --metrics-addr=0.0.0.0:8080
+        - --enable-leader-election
+        - --cluster-name={{ .Values.options.clusterName }}
+        - --aws-region={{ .Values.options.awsRegion }}
+        - --binding-domain={{ .Values.options.bindingDomain }}
+        - --backend-type={{ .Values.options.backendType }}
+        - --annotation-prefix={{ .Values.options.annotationPrefix }}
+        {{- if .Values.options.tableName }}
+        - --table-name={{ .Values.options.tableName }}
+        {{- end }}
+        - --initial-weight={{ .Values.options.initialWeight }}
+        {{- if .Values.options.annotationFilter }}
+        - --annotation-filter={{ .Values.options.annotationFilter }}
+        {{- end }}
+        {{- if .Values.options.awsHealthCheckID }}
+        - --aws-health-check-id={{ .Values.options.awsHealthCheckID }}
+        {{- end }}
+        command:
+        - /manager
+        image: {{ .Values.image.fullyQualifiedURL }}
+        name: manager
+        ports:
+        - containerPort: 8080
+          name: http
+        {{ with .Values.resources }}
+        resources:
+{{ toYaml . | indent 10 }}
+        {{- end }}
+      terminationGracePeriodSeconds: 10

@@ -1,0 +1,21 @@
+image:
+   fullyQualifiedURL: docker-registry.fake.com/adevinta/k8s-traffic-controller:dev-local-build
+options:
+  clusterName: prod0X
+  awsRegion: eu-fake-1
+  bindingDomain: fake.me.io
+  backendType: fake
+  initialWeight: 100
+  awsHealthCheckID: a-healthy-check-id
+  tableName: k8s-traffic-controller
+  annotationFilter: ""
+  annotationPrefix: "dns.adevinta.com"
+resources:
+  limits:
+    cpu: 100m
+    memory: 30Mi
+  requests:
+    cpu: 100m
+    memory: 20Mi
+iam:
+  role: ""

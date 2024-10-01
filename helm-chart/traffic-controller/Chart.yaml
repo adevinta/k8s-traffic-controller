@@ -1,0 +1,4 @@
+apiVersion: v1
+description: k8s Cluster Traffic Operator
+name: traffic-controller
+version: 1.0.0
