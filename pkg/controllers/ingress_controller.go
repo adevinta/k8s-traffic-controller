@@ -120,7 +120,7 @@ func (r *IngressReconciler) calculateIngressWeight(ingress netv1.Ingress) (uint,
 	backendPercentage = float64(backendPercentage) / float64(100)
 	userDesiredWeight, err := strconv.ParseFloat(ingress.Annotations[r.annotationKey("traffic-weight")], 64)
 	if err != nil {
-		return 0, fmt.Errorf("Cannot parse annotation %v", r.annotationKey("traffic-weight"))
+		return 0, fmt.Errorf("Cannot parse annotation %v with value '%v'", r.annotationKey("traffic-weight"), ingress.Annotations[r.annotationKey("traffic-weight")])
 	}
 	if userDesiredWeight < 0 {
 		return 0, fmt.Errorf("Cannot handle negative traffic weights")
