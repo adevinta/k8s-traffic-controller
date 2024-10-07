@@ -36,6 +36,8 @@ spec:
       labels:
         control-plane: controller-manager
     spec:
+      serviceAccountName: {{ .Release.Name }}
+      automountServiceAccountToken: true
       {{- if .Values.priorityClassName }}
       priorityClassName: {{ .Values.priorityClassName }}
       {{- end }}
