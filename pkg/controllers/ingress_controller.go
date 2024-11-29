@@ -133,13 +133,15 @@ func (r *IngressReconciler) calculateIngressWeight(ingress netv1.Ingress) (uint,
 	return desiredWeight, err
 }
 
-func (r *IngressReconciler) newDnsEndpoint(ctx context.Context, dnsEndpoint *externaldnsk8siov1alpha1.DNSEndpoint, target string, ingress netv1.Ingress, owner metav1.OwnerReference) {
+func (r *IngressReconciler) newDnsEndpoint(ctx context.Context, dnsEndpoint *externaldnsk8siov1alpha1.DNSEndpoint, target string, ingress netv1.Ingress) {
 	var desiredWeight uint
 	var err error
 	var healthCheckProperty *externaldnsk8siov1alpha1.ProviderSpecificProperty
+
+	setOwnerRef(dnsEndpoint, &ingress)
+
 	dnsEndpoint.Name = ingress.ObjectMeta.Name
 	dnsEndpoint.Namespace = ingress.ObjectMeta.Namespace
-	dnsEndpoint.SetOwnerReferences([]metav1.OwnerReference{owner})
 	desiredWeight = uint(trafficweight.Store.DesiredWeight)
 	if trafficweight.Store.AWSHealthCheckID != "" {
 		healthCheckProperty = &externaldnsk8siov1alpha1.ProviderSpecificProperty{
@@ -187,7 +189,7 @@ func (r *IngressReconciler) newDnsEndpoint(ctx context.Context, dnsEndpoint *ext
 	}
 }
 
-func (r *IngressReconciler) reconcileDNSEntries(ctx context.Context, ingress netv1.Ingress, ownerRef metav1.OwnerReference) error {
+func (r *IngressReconciler) reconcileDNSEntries(ctx context.Context, ingress netv1.Ingress) error {
 	log := r.Log.WithValues("IngressName", ingress.ObjectMeta.Name).WithValues("IngressNamespace", ingress.ObjectMeta.Namespace)
 
 	if !r.ingressAnnotationMatchFilter(ingress) {
@@ -210,7 +212,7 @@ func (r *IngressReconciler) reconcileDNSEntries(ctx context.Context, ingress net
 		},
 	}
 	var f controllerutil.MutateFn = func() error {
-		r.newDnsEndpoint(ctx, dnsEndpoint, target, ingress, ownerRef)
+		r.newDnsEndpoint(ctx, dnsEndpoint, target, ingress)
 		return nil
 	}
 	_, err = ctrl.CreateOrUpdate(ctx, r.Client, dnsEndpoint, f)
@@ -294,8 +296,6 @@ func (r *IngressReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	trafficStoreMetrics.CurrentWeight.Set(float64(trafficweight.Store.CurrentWeight))
 
 	var ingress netv1.Ingress
-	controller := true
-	var ownerRef metav1.OwnerReference
 
 	if err := r.Get(ctx, req.NamespacedName, &ingress); err != nil {
 		if apierrors.IsNotFound(err) {
@@ -322,13 +322,6 @@ func (r *IngressReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		// on deleted requests.
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
-	ownerRef = metav1.OwnerReference{
-		APIVersion: ingress.APIVersion,
-		Kind:       ingress.Kind,
-		Name:       ingress.GetName(),
-		UID:        ingress.GetUID(),
-		Controller: &controller,
-	}
 
 	if ingress.ObjectMeta.DeletionTimestamp.IsZero() { // Not being deleted
 		// There maybe situations in which we receive an reconciliation event while
@@ -338,7 +331,7 @@ func (r *IngressReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			log.Info("DNS endpoint being removed, requeuing notification")
 			return ctrl.Result{Requeue: true, RequeueAfter: 5 * time.Second}, nil
 		}
-		err := r.reconcileDNSEntries(ctx, ingress, ownerRef)
+		err := r.reconcileDNSEntries(ctx, ingress)
 		if err != nil {
 			log.Error(err, "Could not reconcile DNS endpoints")
 			return ctrl.Result{}, err

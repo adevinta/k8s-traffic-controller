@@ -127,14 +127,14 @@ func TestIngressController(t *testing.T) {
 
 	t.Run("Should forge DNS Endpoints", func(t *testing.T) {
 		forged := &externaldnsk8siov1alpha1.DNSEndpoint{}
-		reconciler.newDnsEndpoint(context.Background(), forged, "bar-celona", ing, ownerRef)
+		reconciler.newDnsEndpoint(context.Background(), forged, "bar-celona", ing)
 		assert.Equal(t, expected, *forged)
 	})
 
 	t.Run("Should create a DNSentry that does not exist during reconcile", func(t *testing.T) {
 		reconciler.Client = fake.NewClientBuilder().WithScheme(scheme).WithObjects(&ing).Build()
 
-		err := reconciler.reconcileDNSEntries(context.Background(), ing, ownerRef)
+		err := reconciler.reconcileDNSEntries(context.Background(), ing)
 		assert.NoError(t, err)
 
 		ep := externaldnsk8siov1alpha1.DNSEndpoint{}
@@ -150,7 +150,7 @@ func TestIngressController(t *testing.T) {
 		oldEndpoint.Spec.Endpoints[0].DNSName = "randomChange"
 
 		reconciler.Client = fake.NewClientBuilder().WithScheme(scheme).WithObjects(&ing, oldEndpoint).Build()
-		err := reconciler.reconcileDNSEntries(context.Background(), ing, ownerRef)
+		err := reconciler.reconcileDNSEntries(context.Background(), ing)
 		assert.NoError(t, err)
 
 		ep := externaldnsk8siov1alpha1.DNSEndpoint{}
@@ -165,7 +165,7 @@ func TestIngressController(t *testing.T) {
 		reconciler.Client = fake.NewClientBuilder().WithScheme(scheme).WithObjects(&ing).Build()
 		reconciler.AnnotationFilter = NewAnnotationFilter("foo=bar")
 
-		err := reconciler.reconcileDNSEntries(context.Background(), ing, ownerRef)
+		err := reconciler.reconcileDNSEntries(context.Background(), ing)
 		assert.NoError(t, err)
 
 		ep := externaldnsk8siov1alpha1.DNSEndpoint{}
@@ -180,7 +180,7 @@ func TestIngressController(t *testing.T) {
 		reconciler.Client = fake.NewClientBuilder().WithScheme(scheme).WithObjects(&ing).Build()
 		reconciler.AnnotationFilter = NewAnnotationFilter("foo=notbar")
 
-		err := reconciler.reconcileDNSEntries(context.Background(), ing, ownerRef)
+		err := reconciler.reconcileDNSEntries(context.Background(), ing)
 
 		ep := externaldnsk8siov1alpha1.DNSEndpoint{}
 		err = reconciler.Client.Get(context.Background(), client.ObjectKeyFromObject(&expected), &ep)
@@ -191,7 +191,7 @@ func TestIngressController(t *testing.T) {
 	t.Run("if we dont set --aws-health-check-id ingress shouldnt have health property", func(t *testing.T) {
 		trafficweight.Store.AWSHealthCheckID = ""
 		forged := &externaldnsk8siov1alpha1.DNSEndpoint{}
-		reconciler.newDnsEndpoint(context.Background(), forged, "bar-celona", ing, ownerRef)
+		reconciler.newDnsEndpoint(context.Background(), forged, "bar-celona", ing)
 		assert.Equal(t, expected, *forged)
 	})
 
@@ -226,7 +226,7 @@ func TestIngressController(t *testing.T) {
 		}
 
 		forged := &externaldnsk8siov1alpha1.DNSEndpoint{}
-		reconciler.newDnsEndpoint(context.Background(), forged, "bar-celona", ing, ownerRef)
+		reconciler.newDnsEndpoint(context.Background(), forged, "bar-celona", ing)
 		assert.Equal(t, expected, *forged)
 		ing.Spec.Rules = oldRules
 	})
