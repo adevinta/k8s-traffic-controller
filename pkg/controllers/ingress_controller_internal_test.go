@@ -4,14 +4,12 @@ import (
 	"context"
 	"testing"
 
-	"github.com/pborman/uuid"
 	"github.com/adevinta/k8s-traffic-controller/pkg/trafficweight"
 
 	logruslogr "github.com/adevinta/go-log-toolkit"
 
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
-	v1 "k8s.io/api/core/v1"
 	netv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -160,9 +158,9 @@ func TestGetTargetFromIngress(t *testing.T) {
 func TestReconcileIngressShouldCreateDNSEndpointsWithCorrectWeight(t *testing.T) {
 	extendedScheme := NewScheme()
 
-	ingress := mockIngress()
-	svcEndpoint := mockEndpoint(epWithName("test-app"))
-	svcEndpointA := mockEndpoint(epWithName("test-app-a"))
+	ingress := MockIngress()
+	svcEndpoint := MockEndpoints(EndpointsWithName("test-app"))
+	svcEndpointA := MockEndpoints(EndpointsWithName("test-app-a"))
 
 	k8sClient := fake.NewClientBuilder().WithScheme(extendedScheme).WithObjects(ingress, svcEndpoint, svcEndpointA).Build()
 
@@ -186,9 +184,9 @@ func TestReconcileIngressShouldCreateDNSEndpointsWithCorrectWeight(t *testing.T)
 func TestIngressWithMissingPodsHaveZeroWeight(t *testing.T) {
 	extendedScheme := NewScheme()
 
-	ingress := mockIngress()
-	testAppEndpoint := mockEndpoint(epWithName("test-app"), epWithoutSubset())
-	testAppAEndpoint := mockEndpoint(epWithName("test-app-a"), epWithoutSubset())
+	ingress := MockIngress()
+	testAppEndpoint := MockEndpoints(EndpointsWithName("test-app"), EndpointsWithoutSubset())
+	testAppAEndpoint := MockEndpoints(EndpointsWithName("test-app-a"), EndpointsWithoutSubset())
 
 	k8sClient := fake.NewClientBuilder().WithScheme(extendedScheme).WithObjects(ingress, testAppAEndpoint, testAppEndpoint).Build()
 
@@ -212,9 +210,9 @@ func TestIngressWithMissingPodsHaveZeroWeight(t *testing.T) {
 func TestIngressWithPartialMissingPodsHaveZeroWeight(t *testing.T) {
 	extendedScheme := NewScheme()
 
-	ingress := mockIngress()
-	testAppEndpoint := mockEndpoint(epWithName("test-app"))
-	testAppAEndpoint := mockEndpoint(epWithName("test-app-a"), epWithoutSubset())
+	ingress := MockIngress()
+	testAppEndpoint := MockEndpoints(EndpointsWithName("test-app"))
+	testAppAEndpoint := MockEndpoints(EndpointsWithName("test-app-a"), EndpointsWithoutSubset())
 
 	k8sClient := fake.NewClientBuilder().WithScheme(extendedScheme).WithObjects(ingress, testAppAEndpoint, testAppEndpoint).Build()
 
@@ -238,9 +236,9 @@ func TestIngressWithPartialMissingPodsHaveZeroWeight(t *testing.T) {
 func TestIngressWithMissingPodsFaultyEndpointsHaveZeroWeight(t *testing.T) {
 	extendedScheme := NewScheme()
 
-	ingress := mockIngress()
-	testAppEndpoint := mockEndpoint(epWithName("test-app"), epWithoutSubsetAddress())
-	testAppAEndpoint := mockEndpoint(epWithName("test-app-a"), epWithoutSubsetAddress())
+	ingress := MockIngress()
+	testAppEndpoint := MockEndpoints(EndpointsWithName("test-app"), EndpointsWithoutSubsetAddress())
+	testAppAEndpoint := MockEndpoints(EndpointsWithName("test-app-a"), EndpointsWithoutSubsetAddress())
 
 	k8sClient := fake.NewClientBuilder().WithScheme(extendedScheme).WithObjects(ingress, testAppAEndpoint, testAppEndpoint).Build()
 
@@ -259,162 +257,4 @@ func TestIngressWithMissingPodsFaultyEndpointsHaveZeroWeight(t *testing.T) {
 	key := client.ObjectKeyFromObject(ep)
 	assert.NoError(t, k8sClient.Get(context.Background(), key, ep))
 	assert.Equal(t, "0", ep.Spec.Endpoints[0].ProviderSpecific[0].Value)
-}
-
-func mockIngress(mutators ...func(*netv1.Ingress)) *netv1.Ingress {
-	ing := netv1.Ingress{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-app",
-			Namespace: "cpr-dev",
-		},
-		Status: netv1.IngressStatus{
-			LoadBalancer: netv1.IngressLoadBalancerStatus{
-				Ingress: []netv1.IngressLoadBalancerIngress{
-					{
-						Hostname: "bar-celona",
-						IP:       "127.0.0.1",
-					},
-				},
-			},
-		},
-	}
-	controller := true
-	ownerRef := metav1.OwnerReference{
-		APIVersion: ing.APIVersion,
-		Kind:       ing.Kind,
-		Name:       ing.GetName(),
-		UID:        ing.GetUID(),
-		Controller: &controller,
-	}
-	ing.ObjectMeta.OwnerReferences = []metav1.OwnerReference{ownerRef}
-
-	ingRules := []netv1.IngressRule{
-		newRule(
-			ruleWithHost("test-app.domain.tld"),
-			ruleWithHTTPPaths(
-				newHTTPIngressPath(
-					pathWithPathRoute("/"),
-					pathWithBackendServiceName("test-app"),
-				),
-				newHTTPIngressPath(
-					pathWithPathRoute("/a"),
-					pathWithBackendServiceName("test-app-a"),
-				),
-			),
-		),
-	}
-
-	ing.Spec.Rules = ingRules
-	for _, mutate := range mutators {
-		mutate(&ing)
-	}
-	return &ing
-}
-
-func withObjectName[T client.Object](name string) func(T) {
-	return func(object T) {
-		object.SetName(name)
-	}
-}
-
-func withObjectNamespace[T client.Object](namespace string) func(T) {
-	return func(object T) {
-		object.SetNamespace(namespace)
-	}
-}
-
-func ingressWithRules(rules ...netv1.IngressRule) func(*netv1.Ingress) {
-	return func(ing *netv1.Ingress) {
-		ing.Spec.Rules = rules
-	}
-}
-
-func newRule(mutators ...func(*netv1.IngressRule)) netv1.IngressRule {
-	rule := netv1.IngressRule{}
-	for _, mutator := range mutators {
-		mutator(&rule)
-	}
-	return rule
-}
-
-func ruleWithHost(host string) func(*netv1.IngressRule) {
-	return func(rule *netv1.IngressRule) {
-		rule.Host = host
-	}
-}
-
-func ruleWithHTTPPaths(paths ...netv1.HTTPIngressPath) func(*netv1.IngressRule) {
-	return func(rule *netv1.IngressRule) {
-		rule.IngressRuleValue.HTTP = &netv1.HTTPIngressRuleValue{
-			Paths: paths,
-		}
-	}
-}
-
-func newHTTPIngressPath(mutators ...func(*netv1.HTTPIngressPath)) netv1.HTTPIngressPath {
-	path := netv1.HTTPIngressPath{}
-	for _, mutator := range mutators {
-		mutator(&path)
-	}
-	return path
-}
-
-func pathWithPathRoute(path string) func(*netv1.HTTPIngressPath) {
-	return func(ingressPath *netv1.HTTPIngressPath) {
-		ingressPath.Path = path
-	}
-}
-
-func pathWithBackendServiceName(serviceName string) func(*netv1.HTTPIngressPath) {
-	return func(ingressPath *netv1.HTTPIngressPath) {
-		ingressPath.Backend.Service = &netv1.IngressServiceBackend{
-			Name: serviceName,
-		}
-	}
-}
-
-func mockEndpoint(mutators ...func(*v1.Endpoints)) *v1.Endpoints {
-	// by default, the name itself should not matter
-	ep := &v1.Endpoints{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      uuid.New(),
-			Namespace: "cpr-dev",
-		},
-		Subsets: []v1.EndpointSubset{
-			{
-				Addresses: []v1.EndpointAddress{
-					{
-						IP: "10.1.1.1",
-					},
-					{
-						IP: "10.1.1.2",
-					},
-				},
-			},
-		},
-	}
-	for _, mutate := range mutators {
-		mutate(ep)
-	}
-	return ep
-}
-
-func epWithName(name string) func(*v1.Endpoints) {
-	return func(ep *v1.Endpoints) {
-		ep.Name = name
-	}
-}
-
-func epWithoutSubset() func(*v1.Endpoints) {
-	return func(ep *v1.Endpoints) {
-		ep.Subsets = nil
-	}
-}
-
-func epWithoutSubsetAddress() func(*v1.Endpoints) {
-	return func(ep *v1.Endpoints) {
-		for i := range ep.Subsets {
-			ep.Subsets[i].Addresses = nil
-		}
-	}
 }

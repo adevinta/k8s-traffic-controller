@@ -16,9 +16,9 @@ import (
 func TestEndpointsMappingShouldIgnoreIngressWithNoHTTPRule(t *testing.T) {
 	extendedScheme := NewScheme()
 
-	ingress := mockIngress(ingressWithRules(newRule()))
+	ingress := MockIngress(IngressWithRules(NewRule()))
 
-	testAppEndpoint := mockEndpoint(epWithName(ingress.GetName()), epWithoutSubset())
+	testAppEndpoint := MockEndpoints(EndpointsWithName(ingress.GetName()), EndpointsWithoutSubset())
 
 	k8sClient := fake.NewClientBuilder().WithScheme(extendedScheme).WithObjects(
 		testAppEndpoint,
@@ -40,34 +40,34 @@ func TestEndpointsMappingShouldTriggerIngressReconcile(t *testing.T) {
 	extendedScheme := NewScheme()
 	serviceName := "service-a"
 
-	ingress1 := mockIngress(
-		withObjectName[*netv1.Ingress]("ingress-using-service-in-first-backend"),
-		ingressWithRules(
-			newRule(ruleWithHTTPPaths(
-				newHTTPIngressPath(
-					pathWithBackendServiceName(serviceName),
+	ingress1 := MockIngress(
+		WithObjectName[*netv1.Ingress]("ingress-using-service-in-first-backend"),
+		IngressWithRules(
+			NewRule(RuleWithHTTPPaths(
+				NewHTTPIngressPath(
+					PathWithBackendServiceName(serviceName),
 				),
 			),
 			),
 		),
 	)
-	ingress2 := mockIngress(
-		withObjectName[*netv1.Ingress]("ingress-using-service-in-second-backend"),
-		ingressWithRules(
-			newRule(),
-			newRule(ruleWithHTTPPaths(
-				newHTTPIngressPath(
-					pathWithBackendServiceName("other-service"),
+	ingress2 := MockIngress(
+		WithObjectName[*netv1.Ingress]("ingress-using-service-in-second-backend"),
+		IngressWithRules(
+			NewRule(),
+			NewRule(RuleWithHTTPPaths(
+				NewHTTPIngressPath(
+					PathWithBackendServiceName("other-service"),
 				),
-				newHTTPIngressPath(
-					pathWithBackendServiceName(serviceName),
+				NewHTTPIngressPath(
+					PathWithBackendServiceName(serviceName),
 				),
 			),
 			),
 		),
 	)
 
-	testAppEndpoint := mockEndpoint(epWithName(serviceName), epWithoutSubset())
+	testAppEndpoint := MockEndpoints(EndpointsWithName(serviceName), EndpointsWithoutSubset())
 
 	k8sClient := fake.NewClientBuilder().WithScheme(extendedScheme).WithObjects(
 		testAppEndpoint,
@@ -93,30 +93,30 @@ func TestEndpointsMappingExcludesOtherNamespaces(t *testing.T) {
 	extendedScheme := NewScheme()
 	serviceName := "service-a"
 
-	ingress1 := mockIngress(
-		withObjectNamespace[*netv1.Ingress]("namespace-a"),
-		ingressWithRules(
-			newRule(ruleWithHTTPPaths(
-				newHTTPIngressPath(
-					pathWithBackendServiceName(serviceName),
+	ingress1 := MockIngress(
+		WithObjectNamespace[*netv1.Ingress]("namespace-a"),
+		IngressWithRules(
+			NewRule(RuleWithHTTPPaths(
+				NewHTTPIngressPath(
+					PathWithBackendServiceName(serviceName),
 				),
 			),
 			),
 		),
 	)
-	ingress2 := mockIngress(
-		withObjectNamespace[*netv1.Ingress]("namespace-b"),
-		ingressWithRules(
-			newRule(ruleWithHTTPPaths(
-				newHTTPIngressPath(
-					pathWithBackendServiceName(serviceName),
+	ingress2 := MockIngress(
+		WithObjectNamespace[*netv1.Ingress]("namespace-b"),
+		IngressWithRules(
+			NewRule(RuleWithHTTPPaths(
+				NewHTTPIngressPath(
+					PathWithBackendServiceName(serviceName),
 				),
 			),
 			),
 		),
 	)
 
-	testAppEndpoint := mockEndpoint(withObjectNamespace[*v1.Endpoints]("namespace-a"), epWithName(serviceName), epWithoutSubset())
+	testAppEndpoint := MockEndpoints(WithObjectNamespace[*v1.Endpoints]("namespace-a"), EndpointsWithName(serviceName), EndpointsWithoutSubset())
 
 	k8sClient := fake.NewClientBuilder().WithScheme(extendedScheme).WithObjects(
 		testAppEndpoint,
