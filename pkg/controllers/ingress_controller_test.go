@@ -328,3 +328,53 @@ func TestIngressController(t *testing.T) {
 		assert.Equal(t, ing.Status, newIng.Status)
 	})
 }
+
+func TestSetEndpointSpecificProperty(t *testing.T) {
+	ep := externaldnsk8siov1alpha1.DNSEndpoint{
+		Spec: externaldnsk8siov1alpha1.DNSEndpointSpec{
+			Endpoints: []*externaldnsk8siov1alpha1.Endpoint{{}},
+		},
+	}
+
+	setEndpointProviderSpecificProperty(ep.Spec.Endpoints[0], "test", "test-value")
+
+	require.Len(t, ep.Spec.Endpoints[0].ProviderSpecific, 1)
+	assert.Equal(t, "test", ep.Spec.Endpoints[0].ProviderSpecific[0].Name)
+	assert.Equal(t, "test-value", ep.Spec.Endpoints[0].ProviderSpecific[0].Value)
+
+	setEndpointProviderSpecificProperty(ep.Spec.Endpoints[0], "test", "test-value-2")
+	require.Len(t, ep.Spec.Endpoints[0].ProviderSpecific, 1)
+	assert.Equal(t, "test", ep.Spec.Endpoints[0].ProviderSpecific[0].Name)
+	assert.Equal(t, "test-value-2", ep.Spec.Endpoints[0].ProviderSpecific[0].Value)
+}
+
+func TestSetGlobalHealthcheckID(t *testing.T) {
+	t.Run("When the global healthcheck ID is set", func(t *testing.T) {
+		ep := externaldnsk8siov1alpha1.DNSEndpoint{
+			Spec: externaldnsk8siov1alpha1.DNSEndpointSpec{
+				Endpoints: []*externaldnsk8siov1alpha1.Endpoint{{}},
+			},
+		}
+		trafficweight.Store.AWSHealthCheckID = "1234"
+
+		setGlobalHealthCheckID(ep.Spec.Endpoints[0])
+
+		require.Len(t, ep.Spec.Endpoints[0].ProviderSpecific, 1)
+		assert.Equal(t, HealthcheckIDProperty, ep.Spec.Endpoints[0].ProviderSpecific[0].Name)
+		assert.Equal(t, "1234", ep.Spec.Endpoints[0].ProviderSpecific[0].Value)
+	})
+	t.Run("When the global healthcheck ID is not set", func(t *testing.T) {
+		ep := externaldnsk8siov1alpha1.DNSEndpoint{
+			Spec: externaldnsk8siov1alpha1.DNSEndpointSpec{
+				Endpoints: []*externaldnsk8siov1alpha1.Endpoint{{
+					ProviderSpecific: []externaldnsk8siov1alpha1.ProviderSpecificProperty{{Name: HealthcheckIDProperty, Value: "1234"}},
+				}},
+			},
+		}
+		trafficweight.Store.AWSHealthCheckID = ""
+
+		setGlobalHealthCheckID(ep.Spec.Endpoints[0])
+
+		assert.Len(t, ep.Spec.Endpoints[0].ProviderSpecific, 0)
+	})
+}
