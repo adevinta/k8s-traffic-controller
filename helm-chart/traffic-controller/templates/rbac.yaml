@@ -6,6 +6,14 @@ metadata:
   name: "{{ .Release.Name }}-leader-election-role"
 rules:
 - apiGroups:
+  - ingress.adevinta.com
+  resources:
+  - "clusteringressservicednsweights"
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
   - ""
   resources:
   - configmaps

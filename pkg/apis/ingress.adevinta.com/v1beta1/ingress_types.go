@@ -4,25 +4,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// kind: ClusterIngressServiceDNSWeight
-// spec:
-// weight: <int>
-// identifier: <string>
-// serviceSelector:
-//
-//	namespace: <string>
-//	matchLabels:
-//		<string>: <string>
-//
-// ingressSelector:
-//
-//	matchLabels:
-//		<string>: <string>
-//	namespaces:
-//		- <string>
-//	classes:
-//		- <string>
-
 // ClusterIngressServiceDNSWeight is the defines the links between k8s services and ingresses
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:scope=Cluster
