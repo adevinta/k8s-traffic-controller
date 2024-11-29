@@ -30,7 +30,8 @@ import (
 
 func TestIngressController(t *testing.T) {
 	testutils.IntegrationTest(t)
-	scheme := NewScheme()
+	scheme, err := NewScheme()
+	require.NoError(t, err)
 
 	trafficweight.Store.AWSHealthCheckID = ""
 	trafficweight.Store.DesiredWeight = 0
@@ -136,7 +137,7 @@ func TestIngressController(t *testing.T) {
 				Namespace: "foo",
 			},
 		}
-		reconciler.newDnsEndpoint(context.Background(), forged, ing)
+		reconciler.mutateDNSEndpoint(context.Background(), forged, ing)
 		assert.Equal(t, expected, *forged)
 	})
 
@@ -205,7 +206,7 @@ func TestIngressController(t *testing.T) {
 				Namespace: "foo",
 			},
 		}
-		reconciler.newDnsEndpoint(context.Background(), forged, ing)
+		reconciler.mutateDNSEndpoint(context.Background(), forged, ing)
 		assert.Equal(t, expected, *forged)
 	})
 
@@ -245,7 +246,7 @@ func TestIngressController(t *testing.T) {
 				Namespace: "foo",
 			},
 		}
-		reconciler.newDnsEndpoint(context.Background(), forged, ing)
+		reconciler.mutateDNSEndpoint(context.Background(), forged, ing)
 		assert.Equal(t, expected, *forged)
 		ing.Spec.Rules = oldRules
 	})
@@ -414,7 +415,7 @@ func TestAddIngressTargets(t *testing.T) {
 
 		r := IngressReconciler{}
 
-		r.addIngressTargetsToEndpoint(&ep, ingress)
+		r.addIngressTargetsToEndpoint(&ep, &ingress)
 
 		require.Len(t, ep.Targets, 2)
 		assert.Contains(t, ep.Targets, "test-hostname")
@@ -435,7 +436,7 @@ func TestAddIngressTargets(t *testing.T) {
 
 		r := IngressReconciler{DevMode: true}
 
-		r.addIngressTargetsToEndpoint(&ep, ingress)
+		r.addIngressTargetsToEndpoint(&ep, &ingress)
 
 		require.Len(t, ep.Targets, 2)
 		assert.Contains(t, ep.Targets, "devmode")

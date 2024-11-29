@@ -10,6 +10,7 @@ import (
 
 	k8s "github.com/adevinta/go-k8s-toolkit"
 	"github.com/adevinta/go-testutils-toolkit"
+	ingressv1beta1 "github.com/adevinta/k8s-traffic-controller/pkg/apis/ingress.adevinta.com/v1beta1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
@@ -131,13 +132,17 @@ func TestTrafficControllerController(t *testing.T) {
 		"--initial-weight", "100",
 	)
 
+	ingCtrlSvc := newIngressControllerService("svc-lb.provider.com")
 	ing := newIngress(testNamespace, "my-ingress", "ingress-lb.provider.com")
 	// Create seems to update the status of the object.
 	// Get a deep copy to be able to inject the status used by the controllers
+	require.NoError(t, k8sClient.Create(ctx, ingCtrlSvc.DeepCopy()))
 	require.NoError(t, k8sClient.Create(ctx, ing.DeepCopy()))
+	require.NoError(t, k8sClient.Status().Update(ctx, ingCtrlSvc))
 	require.NoError(t, k8sClient.Status().Update(ctx, ing))
 
 	require.NoError(t, k8sClient.Create(ctx, newIngressBackendServiceEndpoints(testNamespace, "my-ingress")))
+	require.NoError(t, k8sClient.Create(ctx, newClusterIngressServiceDNSWeight("my-identifier", 100)))
 
 	dnsEndPoint := &endpoint.DNSEndpoint{
 		ObjectMeta: metav1.ObjectMeta{
@@ -150,14 +155,15 @@ func TestTrafficControllerController(t *testing.T) {
 		if err != nil {
 			return false
 		}
-		// We expect exactly 1 entries
-		if len(dnsEndPoint.Spec.Endpoints) != 1 {
+		// We expect exactly 2 entries
+		if len(dnsEndPoint.Spec.Endpoints) != 2 {
 			return false
 		}
 		return true
 	}, 30*time.Second, 100*time.Millisecond)
 
 	assert.True(t, hasDNSEndpointTarget(dnsEndPoint, kindClusterName, "ingress-lb.provider.com"))
+	assert.True(t, hasDNSEndpointTarget(dnsEndPoint, "my-identifier", "svc-lb.provider.com"))
 	for _, e := range dnsEndPoint.Spec.Endpoints {
 		if e.SetIdentifier == kindClusterName {
 			assert.Contains(t, e.ProviderSpecific, endpoint.ProviderSpecificProperty{Name: "aws/weight", Value: "100"})
@@ -207,6 +213,29 @@ func newIngressControllerService(loadbalancerName string) *v1.Service {
 						Hostname: loadbalancerName,
 					},
 				},
+			},
+		},
+	}
+}
+
+func newClusterIngressServiceDNSWeight(identifier string, weight uint) *ingressv1beta1.ClusterIngressServiceDNSWeight {
+	return &ingressv1beta1.ClusterIngressServiceDNSWeight{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "my-ingress",
+		},
+		Spec: ingressv1beta1.ClusterIngressServiceDNSWeightSpec{
+			Weight:     weight,
+			Identifier: identifier,
+			ServiceSelector: ingressv1beta1.ServiceSelector{
+				Namespace: "default",
+				LabelSelector: metav1.LabelSelector{
+					MatchLabels: map[string]string{
+						"app": "my-ingress-controller",
+					},
+				},
+			},
+			IngressSelector: ingressv1beta1.IngressSelector{
+				Classes: []string{"public"},
 			},
 		},
 	}

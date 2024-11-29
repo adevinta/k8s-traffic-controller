@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
 	netv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -14,7 +15,8 @@ import (
 )
 
 func TestEndpointsMappingShouldIgnoreIngressWithNoHTTPRule(t *testing.T) {
-	extendedScheme := NewScheme()
+	extendedScheme, err := NewScheme()
+	require.NoError(t, err)
 
 	ingress := MockIngress(IngressWithRules(NewRule()))
 
@@ -37,7 +39,8 @@ func TestEndpointsMappingShouldIgnoreIngressWithNoHTTPRule(t *testing.T) {
 }
 
 func TestEndpointsMappingShouldTriggerIngressReconcile(t *testing.T) {
-	extendedScheme := NewScheme()
+	extendedScheme, err := NewScheme()
+	require.NoError(t, err)
 	serviceName := "service-a"
 
 	ingress1 := MockIngress(
@@ -90,7 +93,8 @@ func TestEndpointsMappingShouldTriggerIngressReconcile(t *testing.T) {
 }
 
 func TestEndpointsMappingExcludesOtherNamespaces(t *testing.T) {
-	extendedScheme := NewScheme()
+	extendedScheme, err := NewScheme()
+	require.NoError(t, err)
 	serviceName := "service-a"
 
 	ingress1 := MockIngress(

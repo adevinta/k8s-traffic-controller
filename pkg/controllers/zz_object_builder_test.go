@@ -28,3 +28,9 @@ func WithObjectDeletionTimestamp[T client.Object](timestamp metav1.Time) func(T)
 		object.SetDeletionTimestamp(&timestamp)
 	}
 }
+
+func WithObjectLabels[T client.Object](labels map[string]string) func(T) {
+	return func(object T) {
+		object.SetLabels(labels)
+	}
+}
