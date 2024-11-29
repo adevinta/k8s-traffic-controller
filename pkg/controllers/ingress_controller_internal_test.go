@@ -122,39 +122,6 @@ func TestFilterIngressRulesByHost(t *testing.T) {
 	})
 }
 
-func TestGetTargetFromIngress(t *testing.T) {
-	t.Run("with dev mode, devmode should be returned", func(t *testing.T) {
-		reconciler := IngressReconciler{
-			DevMode: true,
-		}
-		target, err := reconciler.getTargetFromIngress(netv1.Ingress{})
-		assert.NoError(t, err)
-		assert.Equal(t, "devmode", target)
-	})
-	t.Run("with a Hostname target, the host name should be returned", func(t *testing.T) {
-		reconciler := IngressReconciler{}
-		target, err := reconciler.getTargetFromIngress(netv1.Ingress{
-			Status: netv1.IngressStatus{
-				LoadBalancer: netv1.IngressLoadBalancerStatus{
-					Ingress: []netv1.IngressLoadBalancerIngress{
-						{
-							Hostname: "hello.world",
-						},
-					},
-				},
-			},
-		})
-		assert.NoError(t, err)
-		assert.Equal(t, "hello.world", target)
-	})
-	t.Run("no target, an error should be returned", func(t *testing.T) {
-		reconciler := IngressReconciler{}
-		target, err := reconciler.getTargetFromIngress(netv1.Ingress{})
-		assert.Error(t, err)
-		assert.Equal(t, "", target)
-	})
-}
-
 func TestReconcileIngressShouldCreateDNSEndpointsWithCorrectWeight(t *testing.T) {
 	extendedScheme := NewScheme()
 

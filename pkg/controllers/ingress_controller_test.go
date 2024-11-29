@@ -9,6 +9,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	v1 "k8s.io/api/core/v1"
 	netv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -30,6 +31,9 @@ import (
 func TestIngressController(t *testing.T) {
 	testutils.IntegrationTest(t)
 	scheme := NewScheme()
+
+	trafficweight.Store.AWSHealthCheckID = ""
+	trafficweight.Store.DesiredWeight = 0
 
 	kubeconfig, err := k8s.NewClientConfigBuilder().WithKubeConfigPath(testEnvConf.KubeconfigFile()).Build()
 	require.NoError(t, err)
@@ -127,7 +131,7 @@ func TestIngressController(t *testing.T) {
 
 	t.Run("Should forge DNS Endpoints", func(t *testing.T) {
 		forged := &externaldnsk8siov1alpha1.DNSEndpoint{}
-		reconciler.newDnsEndpoint(context.Background(), forged, "bar-celona", ing)
+		reconciler.newDnsEndpoint(context.Background(), forged, ing)
 		assert.Equal(t, expected, *forged)
 	})
 
@@ -191,7 +195,7 @@ func TestIngressController(t *testing.T) {
 	t.Run("if we dont set --aws-health-check-id ingress shouldnt have health property", func(t *testing.T) {
 		trafficweight.Store.AWSHealthCheckID = ""
 		forged := &externaldnsk8siov1alpha1.DNSEndpoint{}
-		reconciler.newDnsEndpoint(context.Background(), forged, "bar-celona", ing)
+		reconciler.newDnsEndpoint(context.Background(), forged, ing)
 		assert.Equal(t, expected, *forged)
 	})
 
@@ -226,7 +230,7 @@ func TestIngressController(t *testing.T) {
 		}
 
 		forged := &externaldnsk8siov1alpha1.DNSEndpoint{}
-		reconciler.newDnsEndpoint(context.Background(), forged, "bar-celona", ing)
+		reconciler.newDnsEndpoint(context.Background(), forged, ing)
 		assert.Equal(t, expected, *forged)
 		ing.Spec.Rules = oldRules
 	})
@@ -377,4 +381,117 @@ func TestSetGlobalHealthcheckID(t *testing.T) {
 
 		assert.Len(t, ep.Spec.Endpoints[0].ProviderSpecific, 0)
 	})
+}
+
+func TestAddIngressTargets(t *testing.T) {
+	t.Run("When not in devmode", func(t *testing.T) {
+		ingress := netv1.Ingress{
+			Status: netv1.IngressStatus{
+				LoadBalancer: netv1.IngressLoadBalancerStatus{
+					Ingress: []netv1.IngressLoadBalancerIngress{
+						{Hostname: "test-hostname"},
+						{Hostname: "test-hostname-2"},
+					},
+				},
+			},
+		}
+		ep := externaldnsk8siov1alpha1.Endpoint{}
+
+		r := IngressReconciler{}
+
+		r.addIngressTargetsToEndpoint(&ep, ingress)
+
+		require.Len(t, ep.Targets, 2)
+		assert.Contains(t, ep.Targets, "test-hostname")
+		assert.Contains(t, ep.Targets, "test-hostname-2")
+	})
+	t.Run("When in devmode", func(t *testing.T) {
+		ingress := netv1.Ingress{
+			Status: netv1.IngressStatus{
+				LoadBalancer: netv1.IngressLoadBalancerStatus{
+					Ingress: []netv1.IngressLoadBalancerIngress{
+						{Hostname: "test-hostname"},
+						{Hostname: "test-hostname-2"},
+					},
+				},
+			},
+		}
+		ep := externaldnsk8siov1alpha1.Endpoint{}
+
+		r := IngressReconciler{DevMode: true}
+
+		r.addIngressTargetsToEndpoint(&ep, ingress)
+
+		require.Len(t, ep.Targets, 2)
+		assert.Contains(t, ep.Targets, "devmode")
+		assert.Contains(t, ep.Targets, "devmode")
+	})
+}
+
+func TestAllIngressBackendsHavePods(t *testing.T) {
+	t.Run("When all backends have pods", func(t *testing.T) {
+		ingress := MockIngress(
+			WithObjectNamespace[*netv1.Ingress]("test-namespace"),
+			IngressWithRules(
+				NewRule(RuleWithHTTPPaths(
+					NewHTTPIngressPath(PathWithBackendServiceName("rule-1-service-1")), NewHTTPIngressPath(PathWithBackendServiceName("rule-1-service-2")),
+				)),
+				NewRule(RuleWithHTTPPaths(
+					NewHTTPIngressPath(PathWithBackendServiceName("rule-2-service-1")),
+				)),
+			),
+		)
+		client := fake.NewClientBuilder().WithObjects(
+			MockEndpoints(EndpointsWithName("rule-1-service-1"), WithObjectNamespace[*v1.Endpoints]("test-namespace"), EndpointsWithSubsets(NewSubsetWithAddressIPs("1.1.1.1"))),
+			MockEndpoints(EndpointsWithName("rule-1-service-2"), WithObjectNamespace[*v1.Endpoints]("test-namespace"), EndpointsWithSubsets(NewSubsetWithAddressIPs("1.1.1.2"))),
+			MockEndpoints(EndpointsWithName("rule-2-service-1"), WithObjectNamespace[*v1.Endpoints]("test-namespace"), EndpointsWithSubsets(NewSubsetWithAddressIPs("1.1.1.3"))),
+		).Build()
+		r := IngressReconciler{Client: client}
+		assert.True(t, r.allIngressBackendsHavePods(context.Background(), ingress))
+	})
+	t.Run("When a backend does not have pods", func(t *testing.T) {
+		ingress := MockIngress(
+			WithObjectNamespace[*netv1.Ingress]("test-namespace"),
+			IngressWithRules(
+				NewRule(RuleWithHTTPPaths(
+					NewHTTPIngressPath(PathWithBackendServiceName("rule-1-service-1")), NewHTTPIngressPath(PathWithBackendServiceName("rule-1-service-2")),
+				)),
+				NewRule(RuleWithHTTPPaths(
+					NewHTTPIngressPath(PathWithBackendServiceName("rule-2-service-1")),
+				)),
+			),
+		)
+		client := fake.NewClientBuilder().WithObjects(
+			MockEndpoints(EndpointsWithName("rule-1-service-1"), WithObjectNamespace[*v1.Endpoints]("test-namespace"), EndpointsWithSubsets(NewSubsetWithAddressIPs("1.1.1.1"))),
+			MockEndpoints(EndpointsWithName("rule-1-service-2"), WithObjectNamespace[*v1.Endpoints]("test-namespace"), EndpointsWithoutSubset()),
+			MockEndpoints(EndpointsWithName("rule-2-service-1"), WithObjectNamespace[*v1.Endpoints]("test-namespace"), EndpointsWithSubsets(NewSubsetWithAddressIPs("1.1.1.3"))),
+		).Build()
+		r := IngressReconciler{Client: client}
+		assert.False(t, r.allIngressBackendsHavePods(context.Background(), ingress))
+	})
+	t.Run("When a backend service is missing", func(t *testing.T) {
+		ingress := MockIngress(
+			WithObjectNamespace[*netv1.Ingress]("test-namespace"),
+			IngressWithRules(
+				NewRule(RuleWithHTTPPaths(
+					NewHTTPIngressPath(PathWithBackendServiceName("rule-1-service-1")), NewHTTPIngressPath(PathWithBackendServiceName("rule-1-service-2")),
+				)),
+			),
+		)
+		client := fake.NewClientBuilder().WithObjects(
+			MockEndpoints(EndpointsWithName("rule-1-service-1"), WithObjectNamespace[*v1.Endpoints]("test-namespace"), EndpointsWithSubsets(NewSubsetWithAddressIPs("1.1.1.1"))),
+		).Build()
+		r := IngressReconciler{Client: client}
+		assert.False(t, r.allIngressBackendsHavePods(context.Background(), ingress))
+	})
+}
+
+func TestEndpointsHasPods(t *testing.T) {
+	r := IngressReconciler{}
+
+	assert.True(t, r.endpointsHasPods(MockEndpoints()))
+	assert.False(t, r.endpointsHasPods(MockEndpoints(EndpointsWithSubsets(NewSubsetWithAddressIPs()))))
+	assert.False(t, r.endpointsHasPods(MockEndpoints(EndpointsWithoutSubset())))
+
+	assert.False(t, r.endpointsHasPods(MockEndpoints(WithObjectFinalizers[*v1.Endpoints]("test.adevinta.com"), WithObjectDeletionTimestamp[*v1.Endpoints](metav1.Now()))))
 }
