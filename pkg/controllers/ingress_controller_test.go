@@ -510,3 +510,22 @@ func TestEndpointsHasPods(t *testing.T) {
 
 	assert.False(t, r.endpointsHasPods(MockEndpoints(WithObjectFinalizers[*v1.Endpoints]("test.adevinta.com"), WithObjectDeletionTimestamp[*v1.Endpoints](metav1.Now()))))
 }
+
+func TestListFilteredIngressHosts(t *testing.T) {
+	r := IngressReconciler{
+		BindingDomain: "example.com",
+	}
+	assert.ElementsMatch(
+		t,
+		[]string{"host1.example.com", "example.com"},
+		r.listFilteredIngressHosts(
+			MockIngress(
+				IngressWithRules(
+					NewRule(RuleWithHost("host1.example.com")),
+					NewRule(RuleWithHost("example.com")),
+					NewRule(RuleWithHost("adevinta.com")),
+				),
+			),
+		),
+	)
+}
