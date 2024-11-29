@@ -175,8 +175,6 @@ func (r *IngressReconciler) newDnsEndpoint(ctx context.Context, dnsEndpoint *ext
 
 	setOwnerRef(dnsEndpoint, &ingress)
 
-	dnsEndpoint.Name = ingress.ObjectMeta.Name
-	dnsEndpoint.Namespace = ingress.ObjectMeta.Namespace
 	desiredWeight = uint(trafficweight.Store.DesiredWeight)
 	if r.isIngressWeighted(ingress) {
 		desiredWeight, err = r.calculateIngressWeight(ingress)

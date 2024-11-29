@@ -130,7 +130,12 @@ func TestIngressController(t *testing.T) {
 	}
 
 	t.Run("Should forge DNS Endpoints", func(t *testing.T) {
-		forged := &externaldnsk8siov1alpha1.DNSEndpoint{}
+		forged := &externaldnsk8siov1alpha1.DNSEndpoint{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "bar",
+				Namespace: "foo",
+			},
+		}
 		reconciler.newDnsEndpoint(context.Background(), forged, ing)
 		assert.Equal(t, expected, *forged)
 	})
@@ -194,7 +199,12 @@ func TestIngressController(t *testing.T) {
 
 	t.Run("if we dont set --aws-health-check-id ingress shouldnt have health property", func(t *testing.T) {
 		trafficweight.Store.AWSHealthCheckID = ""
-		forged := &externaldnsk8siov1alpha1.DNSEndpoint{}
+		forged := &externaldnsk8siov1alpha1.DNSEndpoint{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "bar",
+				Namespace: "foo",
+			},
+		}
 		reconciler.newDnsEndpoint(context.Background(), forged, ing)
 		assert.Equal(t, expected, *forged)
 	})
@@ -229,7 +239,12 @@ func TestIngressController(t *testing.T) {
 			},
 		}
 
-		forged := &externaldnsk8siov1alpha1.DNSEndpoint{}
+		forged := &externaldnsk8siov1alpha1.DNSEndpoint{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "bar",
+				Namespace: "foo",
+			},
+		}
 		reconciler.newDnsEndpoint(context.Background(), forged, ing)
 		assert.Equal(t, expected, *forged)
 		ing.Spec.Rules = oldRules
