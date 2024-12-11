@@ -27,6 +27,11 @@ import (
 	externaldnsk8siov1alpha1 "sigs.k8s.io/external-dns/endpoint"
 )
 
+const (
+	HealthcheckIDProperty = "aws/health-check-id"
+	WeightProperty        = "aws/weight"
+)
+
 type annotationFilter struct {
 	key   string
 	value string
@@ -133,22 +138,45 @@ func (r *IngressReconciler) calculateIngressWeight(ingress netv1.Ingress) (uint,
 	return desiredWeight, err
 }
 
+func setEndpointProviderSpecificProperty(endpoint *externaldnsk8siov1alpha1.Endpoint, key, value string) {
+	for i, property := range endpoint.ProviderSpecific {
+		if property.Name == key {
+			endpoint.ProviderSpecific[i].Value = value
+			return
+		}
+	}
+	endpoint.ProviderSpecific = append(endpoint.ProviderSpecific, externaldnsk8siov1alpha1.ProviderSpecificProperty{
+		Name:  key,
+		Value: value,
+	})
+}
+
+func removeProviderSpecificProperty(endpoint *externaldnsk8siov1alpha1.Endpoint, key string) {
+	for i, property := range endpoint.ProviderSpecific {
+		if property.Name == key {
+			endpoint.ProviderSpecific = append(endpoint.ProviderSpecific[:i], endpoint.ProviderSpecific[i+1:]...)
+			return
+		}
+	}
+}
+
+func setGlobalHealthCheckID(endpoint *externaldnsk8siov1alpha1.Endpoint) {
+	if trafficweight.Store.AWSHealthCheckID != "" {
+		setEndpointProviderSpecificProperty(endpoint, HealthcheckIDProperty, trafficweight.Store.AWSHealthCheckID)
+	} else {
+		removeProviderSpecificProperty(endpoint, HealthcheckIDProperty)
+	}
+}
+
 func (r *IngressReconciler) newDnsEndpoint(ctx context.Context, dnsEndpoint *externaldnsk8siov1alpha1.DNSEndpoint, target string, ingress netv1.Ingress) {
 	var desiredWeight uint
 	var err error
-	var healthCheckProperty *externaldnsk8siov1alpha1.ProviderSpecificProperty
 
 	setOwnerRef(dnsEndpoint, &ingress)
 
 	dnsEndpoint.Name = ingress.ObjectMeta.Name
 	dnsEndpoint.Namespace = ingress.ObjectMeta.Namespace
 	desiredWeight = uint(trafficweight.Store.DesiredWeight)
-	if trafficweight.Store.AWSHealthCheckID != "" {
-		healthCheckProperty = &externaldnsk8siov1alpha1.ProviderSpecificProperty{
-			Name:  "aws/health-check-id",
-			Value: trafficweight.Store.AWSHealthCheckID,
-		}
-	}
 	if r.isIngressWeighted(ingress) {
 		desiredWeight, err = r.calculateIngressWeight(ingress)
 		if err != nil {
@@ -167,25 +195,18 @@ func (r *IngressReconciler) newDnsEndpoint(ctx context.Context, dnsEndpoint *ext
 			desiredWeight = 0
 		}
 
-		providerSpecificProperties := externaldnsk8siov1alpha1.ProviderSpecific{
-			externaldnsk8siov1alpha1.ProviderSpecificProperty{
-				Name:  "aws/weight",
-				Value: strconv.FormatUint(uint64(desiredWeight), 10),
-			},
-		}
-		if healthCheckProperty != nil {
-			providerSpecificProperties = append(providerSpecificProperties, *healthCheckProperty)
-		}
-		dnsEndpoint.Spec.Endpoints = append(dnsEndpoint.Spec.Endpoints, &externaldnsk8siov1alpha1.Endpoint{
+		ep := &externaldnsk8siov1alpha1.Endpoint{
 			DNSName: rule.Host,
 			Targets: externaldnsk8siov1alpha1.Targets{
 				target,
 			},
-			RecordType:       "CNAME",
-			SetIdentifier:    r.ClusterName,
-			ProviderSpecific: providerSpecificProperties,
-		},
-		)
+			RecordType:    "CNAME",
+			SetIdentifier: r.ClusterName,
+		}
+
+		setEndpointProviderSpecificProperty(ep, WeightProperty, strconv.FormatUint(uint64(desiredWeight), 10))
+		setGlobalHealthCheckID(ep)
+		dnsEndpoint.Spec.Endpoints = append(dnsEndpoint.Spec.Endpoints, ep)
 	}
 }
 
