@@ -18,11 +18,13 @@ import (
 )
 
 var (
-	scheme   = controllers.NewScheme()
-	setupLog = ctrl.Log.WithName("setup")
+	scheme      = controllers.NewScheme()
+	setupLog    = ctrl.Log.WithName("setup")
+	mainContext = ctrl.SetupSignalHandler()
 )
 
 func main() {
+	ctx := mainContext
 	var metricsAddr string
 	var clusterName string
 	var awsRegion string
@@ -35,6 +37,7 @@ func main() {
 	var tableName string
 	var awsHealthCheckID string
 	var annotationPrefix string
+	var as string
 
 	flag.StringVar(&metricsAddr, "metrics-addr", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&clusterName, "cluster-name", "", "The name of the cluster")
@@ -45,6 +48,7 @@ func main() {
 	flag.StringVar(&tableName, "table-name", "traffic-controller", "table name to use when reading from dynamodb backend")
 	flag.StringVar(&awsHealthCheckID, "aws-health-check-id", "", "AWS route53 healthcheck id used, it can be only one.  set to \"\" to disable healthchecks")
 	flag.StringVar(&annotationPrefix, "annotation-prefix", "dns.adevinta.com", "The prefix for traffic-management annotations in ingress objects (e.g. dns.adevinta.io/traffic-weight)")
+	flag.StringVar(&as, "as", "", "The user to impersonate to run this controller")
 
 	flag.IntVar(&initialWeight, "initial-weight", 0, "DNS weight for this cluster")
 	flag.BoolVar(&enableLeaderElection, "enable-leader-election", false,
@@ -78,9 +82,15 @@ func main() {
 	trafficweight.Store.DesiredWeight = desiredWeight
 	trafficweight.Store.CurrentWeight = desiredWeight
 
+	restConfig := ctrl.GetConfigOrDie()
+
+	if as != "" {
+		restConfig.Impersonate.UserName = as
+	}
+
 	backend.OnWeightUpdate(trafficweight.Store)
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+	mgr, err := ctrl.NewManager(restConfig, ctrl.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
 			BindAddress: metricsAddr,
@@ -115,7 +125,7 @@ func main() {
 	// +kubebuilder:scaffold:builder
 
 	setupLog.Info("starting manager")
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+	if err := mgr.Start(ctx); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
