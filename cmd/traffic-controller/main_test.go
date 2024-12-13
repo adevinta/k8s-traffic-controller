@@ -199,6 +199,7 @@ func newIngressControllerService(loadbalancerName string) *v1.Service {
 			Selector: map[string]string{
 				"app": "my-service",
 			},
+			Type: v1.ServiceTypeLoadBalancer,
 			Ports: []v1.ServicePort{
 				{
 					Name: "http",

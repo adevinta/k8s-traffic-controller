@@ -4,7 +4,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// ClusterIngressServiceDNSWeight is the defines the links between k8s services and ingresses
+// ClusterIngressServiceDNSWeight is what defines the links between k8s services and ingresses
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:scope=Cluster
 type ClusterIngressServiceDNSWeight struct {

@@ -17,7 +17,7 @@ spec:
   - name: v1beta1
     schema:
       openAPIV3Schema:
-        description: ClusterIngressServiceDNSWeight is the defines the links between
+        description: ClusterIngressServiceDNSWeight is what defines the links between
           k8s services and ingresses
         properties:
           apiVersion:
