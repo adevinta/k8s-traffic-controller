@@ -19,7 +19,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/source"
@@ -100,16 +99,6 @@ func (r *IngressReconciler) filterIngressRulesByHost(rules []netv1.IngressRule) 
 	return rulesToBind
 }
 
-func (r *IngressReconciler) getTargetFromIngress(ingress netv1.Ingress) (string, error) {
-	if r.DevMode {
-		return "devmode", nil
-	}
-	if len(ingress.Status.LoadBalancer.Ingress) == 0 {
-		return "", fmt.Errorf("Ingress has no status")
-	}
-	return ingress.Status.LoadBalancer.Ingress[0].Hostname, nil
-}
-
 func (r *IngressReconciler) isIngressWeighted(ingress netv1.Ingress) bool {
 	return r.ingressHasAnnotationKey(ingress, r.annotationKey("traffic-weight"))
 }
@@ -168,7 +157,19 @@ func setGlobalHealthCheckID(endpoint *externaldnsk8siov1alpha1.Endpoint) {
 	}
 }
 
-func (r *IngressReconciler) newDnsEndpoint(ctx context.Context, dnsEndpoint *externaldnsk8siov1alpha1.DNSEndpoint, target string, ingress netv1.Ingress) {
+func (r *IngressReconciler) addIngressTargetsToEndpoint(endpoint *externaldnsk8siov1alpha1.Endpoint, ingress netv1.Ingress) {
+	for _, lb := range ingress.Status.LoadBalancer.Ingress {
+		if lb.Hostname != "" {
+			hostName := lb.Hostname
+			if r.DevMode {
+				hostName = "devmode"
+			}
+			endpoint.Targets = append(endpoint.Targets, hostName)
+		}
+	}
+}
+
+func (r *IngressReconciler) newDnsEndpoint(ctx context.Context, dnsEndpoint *externaldnsk8siov1alpha1.DNSEndpoint, ingress netv1.Ingress) {
 	var desiredWeight uint
 	var err error
 
@@ -188,21 +189,19 @@ func (r *IngressReconciler) newDnsEndpoint(ctx context.Context, dnsEndpoint *ext
 			dnsEndpoint.ObjectMeta.Annotations = make(map[string]string)
 		}
 	}
+
+	if !r.allIngressBackendsHavePods(ctx, &ingress) {
+		desiredWeight = 0
+	}
 	dnsEndpoint.Spec = externaldnsk8siov1alpha1.DNSEndpointSpec{Endpoints: []*externaldnsk8siov1alpha1.Endpoint{}}
 	for _, rule := range r.filterIngressRulesByHost(ingress.Spec.Rules) {
 
-		if !r.ingressRuleHasPods(ctx, ingress.ObjectMeta.Namespace, &rule) {
-			desiredWeight = 0
-		}
-
 		ep := &externaldnsk8siov1alpha1.Endpoint{
-			DNSName: rule.Host,
-			Targets: externaldnsk8siov1alpha1.Targets{
-				target,
-			},
+			DNSName:       rule.Host,
 			RecordType:    "CNAME",
 			SetIdentifier: r.ClusterName,
 		}
+		r.addIngressTargetsToEndpoint(ep, ingress)
 
 		setEndpointProviderSpecificProperty(ep, WeightProperty, strconv.FormatUint(uint64(desiredWeight), 10))
 		setGlobalHealthCheckID(ep)
@@ -218,12 +217,6 @@ func (r *IngressReconciler) reconcileDNSEntries(ctx context.Context, ingress net
 		return nil
 	}
 
-	target, err := r.getTargetFromIngress(ingress)
-	if err != nil {
-		log.Info("Ingress object doesn't have target assigned. Skipping")
-		return nil
-	}
-
 	// Reconcile uses this property that an ingress has a single matching dnsendpoint
 	// with the same name. Shall this be changed, we should also change the Reconcile code
 	var dnsEndpoint = &externaldnsk8siov1alpha1.DNSEndpoint{
@@ -232,11 +225,10 @@ func (r *IngressReconciler) reconcileDNSEntries(ctx context.Context, ingress net
 			Namespace: ingress.GetNamespace(),
 		},
 	}
-	var f controllerutil.MutateFn = func() error {
-		r.newDnsEndpoint(ctx, dnsEndpoint, target, ingress)
+	_, err := ctrl.CreateOrUpdate(ctx, r.Client, dnsEndpoint, func() error {
+		r.newDnsEndpoint(ctx, dnsEndpoint, ingress)
 		return nil
-	}
-	_, err = ctrl.CreateOrUpdate(ctx, r.Client, dnsEndpoint, f)
+	})
 	return err
 }
 
@@ -255,23 +247,23 @@ func (r *IngressReconciler) endpointBeingDeleted(ctx context.Context, obj types.
 in DNSEndpoint Object we set its weight based on hostname level. in case a host in an ingress has more than 1 service for different paths,
 we will only set the weight to 0 if all services do not have backing pods.
 */
-func (r *IngressReconciler) ingressRuleHasPods(ctx context.Context, namespace string, rule *netv1.IngressRule) bool {
-
-	// there are some edge cases that the rules does not have HTTP property defined
-	// keeping the same behavior
-	if rule.HTTP == nil {
-		return false
-	}
-	paths := rule.HTTP.Paths
-
+func (r *IngressReconciler) allIngressBackendsHavePods(ctx context.Context, ingress *netv1.Ingress) bool {
 	var servicesName = make(map[string]types.NamespacedName)
 
-	for _, path := range paths {
-		servicesName[path.Backend.Service.Name] = types.NamespacedName{Namespace: namespace, Name: path.Backend.Service.Name}
+	for _, rule := range ingress.Spec.Rules {
+		// there are some edge cases that the rules does not have HTTP property defined
+		// keeping the same behavior
+		if rule.HTTP == nil {
+			continue
+		}
+		paths := rule.HTTP.Paths
+
+		for _, path := range paths {
+			servicesName[path.Backend.Service.Name] = types.NamespacedName{Namespace: ingress.Namespace, Name: path.Backend.Service.Name}
+		}
 	}
 
 	for _, svc := range servicesName {
-
 		var endpoints v1.Endpoints
 
 		if err := r.Get(ctx, svc, &endpoints); err != nil {
@@ -281,12 +273,6 @@ func (r *IngressReconciler) ingressRuleHasPods(ctx context.Context, namespace st
 			if apierrors.IsNotFound(err) {
 				return false
 			}
-			return true
-		}
-
-		if !endpoints.DeletionTimestamp.IsZero() {
-			// If the endpoint is being deleted, it will eventually disappear, and ingresses will not have pods pretty soon.
-			// Handling this case here helps reduce downtime in some cases
 			return false
 		}
 
@@ -299,6 +285,11 @@ func (r *IngressReconciler) ingressRuleHasPods(ctx context.Context, namespace st
 }
 
 func (r *IngressReconciler) endpointsHasPods(endpoints *v1.Endpoints) bool {
+	if !endpoints.DeletionTimestamp.IsZero() {
+		// If the endpoint is being deleted, it will eventually disappear, and ingresses will not have pods pretty soon.
+		// Handling this case here helps reduce downtime in some cases
+		return false
+	}
 	if len(endpoints.Subsets) == 0 {
 		return false
 	}
