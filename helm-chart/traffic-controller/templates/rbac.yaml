@@ -6,14 +6,6 @@ metadata:
   name: "{{ .Release.Name }}-leader-election-role"
 rules:
 - apiGroups:
-  - ingress.adevinta.com
-  resources:
-  - "clusteringressservicednsweights"
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
   - ""
   resources:
   - configmaps
@@ -58,6 +50,22 @@ metadata:
   creationTimestamp: null
   name: "{{ .Release.Name }}-manager-role"
 rules:
+- apiGroups:
+  - ingress.adevinta.com
+  resources:
+  - "clusteringressservicednsweights"
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - "services"
+  verbs:
+  - get
+  - list
+  - watch
 - apiGroups:
   - externaldns.k8s.io
   resources:

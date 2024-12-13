@@ -178,6 +178,18 @@ func (r *IngressReconciler) addIngressTargetsToEndpoint(endpoint *externaldnsk8s
 	}
 }
 
+func (r *IngressReconciler) addServiceTargetsToEndpoint(endpoint *externaldnsk8siov1alpha1.Endpoint, service *v1.Service) {
+	for _, lb := range service.Status.LoadBalancer.Ingress {
+		if lb.Hostname != "" {
+			hostName := lb.Hostname
+			if r.DevMode {
+				hostName = "devmode"
+			}
+			endpoint.Targets = append(endpoint.Targets, hostName)
+		}
+	}
+}
+
 func (r *IngressReconciler) listClusterIngressServiceDNSWeightsForIngress(ctx context.Context, ingress *netv1.Ingress) ([]ingressv1beta1.ClusterIngressServiceDNSWeight, error) {
 	clusterIngressServiceDNSWeights := &ingressv1beta1.ClusterIngressServiceDNSWeightList{}
 	err := r.List(ctx, clusterIngressServiceDNSWeights)
@@ -232,7 +244,7 @@ func (r *IngressReconciler) addCRDsTargetsToEndpoint(ctx context.Context, dnsEnd
 				RecordType:    "CNAME",
 				SetIdentifier: clusterIngressServiceDNSWeight.Spec.Identifier,
 			}
-			r.addIngressTargetsToEndpoint(ep, ingress)
+			r.addServiceTargetsToEndpoint(ep, &service)
 
 			endpointWeight := ingressDNSWeight * clusterIngressServiceDNSWeight.Spec.Weight / 100
 

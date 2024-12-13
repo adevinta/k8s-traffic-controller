@@ -388,7 +388,7 @@ func TestAddCRDsTargetsToDNSEndpoint(t *testing.T) {
 			MockService(
 				WithObjectName[*v1.Service]("service-1"), WithObjectNamespace[*v1.Service]("test-namespace"),
 				WithObjectLabels[*v1.Service](map[string]string{"test-key": "test-value"}),
-				WithServiceLoadBalancerHostnames("bar-celona"),
+				WithServiceLoadBalancerHostnames("service-lb"),
 			),
 		).Build()
 		r := IngressReconciler{
@@ -404,7 +404,7 @@ func TestAddCRDsTargetsToDNSEndpoint(t *testing.T) {
 		assert.Equal(t, "www.example.com", dnsEndpoint.Spec.Endpoints[1].DNSName)
 		for _, e := range dnsEndpoint.Spec.Endpoints {
 			assert.Equal(t, "30", e.ProviderSpecific[0].Value)
-			assert.Equal(t, endpoint.Targets{"bar-celona"}, e.Targets)
+			assert.Equal(t, endpoint.Targets{"service-lb"}, e.Targets)
 			assert.Equal(t, WeightProperty, e.ProviderSpecific[0].Name)
 		}
 	})
