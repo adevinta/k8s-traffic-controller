@@ -119,9 +119,17 @@ func TestTrafficControllerController(t *testing.T) {
 	assert.Eventually(t, func() bool {
 		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(sa), sa)
 		return err == nil
-	}, 5*time.Minute, 5*time.Second)
+	}, 30*time.Second, 100*time.Millisecond)
 
-	startMain(t, "k8s-traffic-controller", "--as", fmt.Sprintf("system:serviceaccount:%s:%s", controllerNamespace, releaseName), "--binding-domain", "example.com", "--cluster-name", kindClusterName, "--backend-type", "fake")
+	startMain(
+		t,
+		"k8s-traffic-controller",
+		"--as", fmt.Sprintf("system:serviceaccount:%s:%s", controllerNamespace, releaseName),
+		"--binding-domain", "example.com",
+		"--cluster-name", kindClusterName,
+		"--backend-type", "fake",
+		"--initial-weight", "100",
+	)
 
 	ing := newIngress(testNamespace, "my-ingress", "ingress-lb.provider.com")
 	// Create seems to update the status of the object.
@@ -131,26 +139,30 @@ func TestTrafficControllerController(t *testing.T) {
 
 	require.NoError(t, k8sClient.Create(ctx, newIngressBackendServiceEndpoints(testNamespace, "my-ingress")))
 
-	assert.Eventually(t, func() bool {
-		dnsEndPoint := &endpoint.DNSEndpoint{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "my-ingress",
-				Namespace: testNamespace,
-			},
-		}
+	dnsEndPoint := &endpoint.DNSEndpoint{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-ingress",
+			Namespace: testNamespace,
+		},
+	}
+	require.Eventually(t, func() bool {
 		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsEndPoint), dnsEndPoint)
 		if err != nil {
 			return false
 		}
-		// We expect exactly 2 entries
+		// We expect exactly 1 entries
 		if len(dnsEndPoint.Spec.Endpoints) != 1 {
-			return false
-		}
-		if !hasDNSEndpointTarget(dnsEndPoint, kindClusterName, "ingress-lb.provider.com") {
 			return false
 		}
 		return true
 	}, 30*time.Second, 100*time.Millisecond)
+
+	assert.True(t, hasDNSEndpointTarget(dnsEndPoint, kindClusterName, "ingress-lb.provider.com"))
+	for _, e := range dnsEndPoint.Spec.Endpoints {
+		if e.SetIdentifier == kindClusterName {
+			assert.Contains(t, e.ProviderSpecific, endpoint.ProviderSpecificProperty{Name: "aws/weight", Value: "100"})
+		}
+	}
 
 }
 
