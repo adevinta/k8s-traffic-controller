@@ -1,4 +1,4 @@
----
+{{ if .Capabilities.APIVersions.Has "monitoring.coreos.com/v1/ServiceMonitor" }}
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -14,3 +14,4 @@ spec:
   selector:
     matchLabels:
       control-plane: controller-manager
+{{ end }}
