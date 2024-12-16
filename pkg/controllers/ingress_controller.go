@@ -89,6 +89,14 @@ func (r *IngressReconciler) ingressAnnotationMatchFilter(ingress netv1.Ingress) 
 	return r.ingressHasAnnotationKeyValue(ingress, r.AnnotationFilter.key, r.AnnotationFilter.value)
 }
 
+func (r *IngressReconciler) listFilteredIngressHosts(ingress *netv1.Ingress) []string {
+	hosts := []string{}
+	for _, rule := range r.filterIngressRulesByHost(ingress.Spec.Rules) {
+		hosts = append(hosts, rule.Host)
+	}
+	return hosts
+}
+
 func (r *IngressReconciler) filterIngressRulesByHost(rules []netv1.IngressRule) []netv1.IngressRule {
 	rulesToBind := []netv1.IngressRule{}
 	for _, rule := range rules {
@@ -192,18 +200,24 @@ func (r *IngressReconciler) newDnsEndpoint(ctx context.Context, dnsEndpoint *ext
 		desiredWeight = 0
 	}
 	dnsEndpoint.Spec = externaldnsk8siov1alpha1.DNSEndpointSpec{Endpoints: []*externaldnsk8siov1alpha1.Endpoint{}}
-	for _, rule := range r.filterIngressRulesByHost(ingress.Spec.Rules) {
 
-		ep := &externaldnsk8siov1alpha1.Endpoint{
-			DNSName:       rule.Host,
-			RecordType:    "CNAME",
-			SetIdentifier: r.ClusterName,
+	dnsNames := r.listFilteredIngressHosts(&ingress)
+
+	if len(ingress.Status.LoadBalancer.Ingress) > 0 {
+		for _, dnsName := range dnsNames {
+
+			ep := &externaldnsk8siov1alpha1.Endpoint{
+				DNSName:       dnsName,
+				RecordType:    "CNAME",
+				SetIdentifier: r.ClusterName,
+			}
+			r.addIngressTargetsToEndpoint(ep, ingress)
+
+			setEndpointProviderSpecificProperty(ep, WeightProperty, strconv.FormatUint(uint64(desiredWeight), 10))
+
+			setGlobalHealthCheckID(ep)
+			dnsEndpoint.Spec.Endpoints = append(dnsEndpoint.Spec.Endpoints, ep)
 		}
-		r.addIngressTargetsToEndpoint(ep, ingress)
-
-		setEndpointProviderSpecificProperty(ep, WeightProperty, strconv.FormatUint(uint64(desiredWeight), 10))
-		setGlobalHealthCheckID(ep)
-		dnsEndpoint.Spec.Endpoints = append(dnsEndpoint.Spec.Endpoints, ep)
 	}
 }
 
