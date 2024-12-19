@@ -10,6 +10,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 
+	"github.com/adevinta/go-log-toolkit"
 	ingressv1beta1 "github.com/adevinta/k8s-traffic-controller/pkg/apis/ingress.adevinta.com/v1beta1"
 	"github.com/adevinta/k8s-traffic-controller/pkg/trafficweight"
 	"github.com/go-logr/logr"
@@ -225,13 +226,26 @@ func (r *IngressReconciler) addCRDsTargetsToEndpoint(ctx context.Context, dnsEnd
 		if err != nil {
 			return err
 		}
+
 		if len(services.Items) == 0 {
 			return fmt.Errorf("no services found for selector %v in namespace %s", clusterIngressServiceDNSWeight.Spec.ServiceSelector, clusterIngressServiceDNSWeight.Spec.ServiceSelector.Namespace)
 		}
-		if len(services.Items) > 1 {
+		servicesWithLoadBalancer := []*v1.Service{}
+		for _, service := range services.Items {
+			if len(service.Status.LoadBalancer.Ingress) > 0 {
+				servicesWithLoadBalancer = append(servicesWithLoadBalancer, service.DeepCopy())
+			}
+		}
+		if len(servicesWithLoadBalancer) > 1 {
 			return fmt.Errorf("more than one service found for selector %v in namespace %s", clusterIngressServiceDNSWeight.Spec.ServiceSelector, clusterIngressServiceDNSWeight.Spec.ServiceSelector.Namespace)
 		}
-		service := services.Items[0]
+		if len(servicesWithLoadBalancer) == 0 {
+			// There is 1 matching service but it does not have a load balancer.
+			// Ignoring it
+			log.DefaultLogger.WithField("service", services.Items[0].Name).Info("Service does not have a load balancer ingress, skipping adding it to the DNSEndpoint")
+			return nil
+		}
+		service := servicesWithLoadBalancer[0]
 		if len(service.Status.LoadBalancer.Ingress) == 0 {
 			log := r.Log.WithValues("IngressName", ingress.ObjectMeta.Name).WithValues("IngressNamespace", ingress.ObjectMeta.Namespace)
 			log.Info("Service does not have a load balancer ingress, skipping")
@@ -244,7 +258,7 @@ func (r *IngressReconciler) addCRDsTargetsToEndpoint(ctx context.Context, dnsEnd
 				RecordType:    "CNAME",
 				SetIdentifier: clusterIngressServiceDNSWeight.Spec.Identifier,
 			}
-			r.addServiceTargetsToEndpoint(ep, &service)
+			r.addServiceTargetsToEndpoint(ep, service)
 
 			endpointWeight := ingressDNSWeight * clusterIngressServiceDNSWeight.Spec.Weight / 100
 

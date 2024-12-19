@@ -382,13 +382,18 @@ func TestAddCRDsTargetsToDNSEndpoint(t *testing.T) {
 		require.Len(t, dnsEndpoint.Spec.Endpoints, 0)
 	})
 
-	t.Run("When a single service is available", func(t *testing.T) {
+	t.Run("When a single service with backend is available", func(t *testing.T) {
 		k8sClient := fake.NewClientBuilder().WithScheme(extendedScheme).WithObjects(
 			MockIngressWeight(FromIngressWeight(ingressWeight), WithCRDWeight(30)),
 			MockService(
 				WithObjectName[*v1.Service]("service-1"), WithObjectNamespace[*v1.Service]("test-namespace"),
 				WithObjectLabels[*v1.Service](map[string]string{"test-key": "test-value"}),
 				WithServiceLoadBalancerHostnames("service-lb"),
+			),
+			MockService(
+				WithObjectName[*v1.Service]("service-2"), WithObjectNamespace[*v1.Service]("test-namespace"),
+				WithObjectLabels[*v1.Service](map[string]string{"test-key": "test-value"}),
+				WithServiceLoadBalancerHostnames(),
 			),
 		).Build()
 		r := IngressReconciler{
