@@ -18,7 +18,7 @@ import (
 )
 
 var (
-	scheme      = controllers.NewScheme()
+	scheme      = controllers.Must(controllers.NewScheme())
 	setupLog    = ctrl.Log.WithName("setup")
 	mainContext = ctrl.SetupSignalHandler()
 )

@@ -10,6 +10,8 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 
+	"github.com/adevinta/go-log-toolkit"
+	ingressv1beta1 "github.com/adevinta/k8s-traffic-controller/pkg/apis/ingress.adevinta.com/v1beta1"
 	"github.com/adevinta/k8s-traffic-controller/pkg/trafficweight"
 	"github.com/go-logr/logr"
 	netv1 "k8s.io/api/networking/v1"
@@ -165,7 +167,7 @@ func setGlobalHealthCheckID(endpoint *externaldnsk8siov1alpha1.Endpoint) {
 	}
 }
 
-func (r *IngressReconciler) addIngressTargetsToEndpoint(endpoint *externaldnsk8siov1alpha1.Endpoint, ingress netv1.Ingress) {
+func (r *IngressReconciler) addIngressTargetsToEndpoint(endpoint *externaldnsk8siov1alpha1.Endpoint, ingress *netv1.Ingress) {
 	for _, lb := range ingress.Status.LoadBalancer.Ingress {
 		if lb.Hostname != "" {
 			hostName := lb.Hostname
@@ -177,7 +179,99 @@ func (r *IngressReconciler) addIngressTargetsToEndpoint(endpoint *externaldnsk8s
 	}
 }
 
-func (r *IngressReconciler) newDnsEndpoint(ctx context.Context, dnsEndpoint *externaldnsk8siov1alpha1.DNSEndpoint, ingress netv1.Ingress) {
+func (r *IngressReconciler) addServiceTargetsToEndpoint(endpoint *externaldnsk8siov1alpha1.Endpoint, service *v1.Service) {
+	for _, lb := range service.Status.LoadBalancer.Ingress {
+		if lb.Hostname != "" {
+			hostName := lb.Hostname
+			if r.DevMode {
+				hostName = "devmode"
+			}
+			endpoint.Targets = append(endpoint.Targets, hostName)
+		}
+	}
+}
+
+func (r *IngressReconciler) listClusterIngressServiceDNSWeightsForIngress(ctx context.Context, ingress *netv1.Ingress) ([]ingressv1beta1.ClusterIngressServiceDNSWeight, error) {
+	clusterIngressServiceDNSWeights := &ingressv1beta1.ClusterIngressServiceDNSWeightList{}
+	err := r.List(ctx, clusterIngressServiceDNSWeights)
+	if err != nil {
+		return nil, err
+	}
+
+	var matchingWeights []ingressv1beta1.ClusterIngressServiceDNSWeight
+	for _, clusterIngressServiceDNSWeight := range clusterIngressServiceDNSWeights.Items {
+		if ingressMatchesSelector(ingress, &clusterIngressServiceDNSWeight.Spec.IngressSelector) {
+			matchingWeights = append(matchingWeights, clusterIngressServiceDNSWeight)
+		}
+	}
+	return matchingWeights, nil
+}
+
+func (r *IngressReconciler) addCRDsTargetsToEndpoint(ctx context.Context, dnsEndpoint *externaldnsk8siov1alpha1.DNSEndpoint, ingress *netv1.Ingress, ingressDNSWeight uint, dnsNames []string) error {
+	if len(dnsNames) == 0 {
+		return nil
+	}
+	clusterIngressServiceDNSWeights, err := r.listClusterIngressServiceDNSWeightsForIngress(ctx, ingress)
+	if err != nil {
+		return err
+	}
+	for _, clusterIngressServiceDNSWeight := range clusterIngressServiceDNSWeights {
+		services := &v1.ServiceList{}
+		err = r.List(
+			ctx,
+			services,
+			client.InNamespace(clusterIngressServiceDNSWeight.Spec.ServiceSelector.Namespace),
+			client.MatchingLabels(clusterIngressServiceDNSWeight.Spec.ServiceSelector.MatchLabels),
+		)
+		if err != nil {
+			return err
+		}
+
+		if len(services.Items) == 0 {
+			return fmt.Errorf("no services found for selector %v in namespace %s", clusterIngressServiceDNSWeight.Spec.ServiceSelector, clusterIngressServiceDNSWeight.Spec.ServiceSelector.Namespace)
+		}
+		servicesWithLoadBalancer := []*v1.Service{}
+		for _, service := range services.Items {
+			if len(service.Status.LoadBalancer.Ingress) > 0 {
+				servicesWithLoadBalancer = append(servicesWithLoadBalancer, service.DeepCopy())
+			}
+		}
+		if len(servicesWithLoadBalancer) > 1 {
+			return fmt.Errorf("more than one service found for selector %v in namespace %s", clusterIngressServiceDNSWeight.Spec.ServiceSelector, clusterIngressServiceDNSWeight.Spec.ServiceSelector.Namespace)
+		}
+		if len(servicesWithLoadBalancer) == 0 {
+			// There is 1 matching service but it does not have a load balancer.
+			// Ignoring it
+			log.DefaultLogger.WithField("service", services.Items[0].Name).Info("Service does not have a load balancer ingress, skipping adding it to the DNSEndpoint")
+			return nil
+		}
+		service := servicesWithLoadBalancer[0]
+		if len(service.Status.LoadBalancer.Ingress) == 0 {
+			log := r.Log.WithValues("IngressName", ingress.ObjectMeta.Name).WithValues("IngressNamespace", ingress.ObjectMeta.Namespace)
+			log.Info("Service does not have a load balancer ingress, skipping")
+			continue
+		}
+		for _, dnsName := range dnsNames {
+
+			ep := &externaldnsk8siov1alpha1.Endpoint{
+				DNSName:       dnsName,
+				RecordType:    "CNAME",
+				SetIdentifier: clusterIngressServiceDNSWeight.Spec.Identifier,
+			}
+			r.addServiceTargetsToEndpoint(ep, service)
+
+			endpointWeight := ingressDNSWeight * clusterIngressServiceDNSWeight.Spec.Weight / 100
+
+			setEndpointProviderSpecificProperty(ep, WeightProperty, strconv.FormatUint(uint64(endpointWeight), 10))
+			dnsEndpoint.Spec.Endpoints = append(dnsEndpoint.Spec.Endpoints, ep)
+		}
+
+	}
+	return nil
+}
+
+// +kubebuilder:rbac:groups=ingress.adevinta.com,resources=clusteringressservicednsweights,verbs=get;list;watch
+func (r *IngressReconciler) mutateDNSEndpoint(ctx context.Context, dnsEndpoint *externaldnsk8siov1alpha1.DNSEndpoint, ingress netv1.Ingress) error {
 	var desiredWeight uint
 	var err error
 
@@ -189,7 +283,7 @@ func (r *IngressReconciler) newDnsEndpoint(ctx context.Context, dnsEndpoint *ext
 		if err != nil {
 			log := r.Log.WithValues("IngressName", ingress.ObjectMeta.Name).WithValues("IngressNamespace", ingress.ObjectMeta.Namespace)
 			log.Error(err, "something went wrong calculating the weight, doing nothing")
-			return
+			return err
 		}
 		if len(dnsEndpoint.ObjectMeta.Annotations) == 0 {
 			dnsEndpoint.ObjectMeta.Annotations = make(map[string]string)
@@ -211,7 +305,7 @@ func (r *IngressReconciler) newDnsEndpoint(ctx context.Context, dnsEndpoint *ext
 				RecordType:    "CNAME",
 				SetIdentifier: r.ClusterName,
 			}
-			r.addIngressTargetsToEndpoint(ep, ingress)
+			r.addIngressTargetsToEndpoint(ep, &ingress)
 
 			setEndpointProviderSpecificProperty(ep, WeightProperty, strconv.FormatUint(uint64(desiredWeight), 10))
 
@@ -219,6 +313,11 @@ func (r *IngressReconciler) newDnsEndpoint(ctx context.Context, dnsEndpoint *ext
 			dnsEndpoint.Spec.Endpoints = append(dnsEndpoint.Spec.Endpoints, ep)
 		}
 	}
+	err = r.addCRDsTargetsToEndpoint(ctx, dnsEndpoint, &ingress, desiredWeight, dnsNames)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (r *IngressReconciler) reconcileDNSEntries(ctx context.Context, ingress netv1.Ingress) error {
@@ -238,8 +337,7 @@ func (r *IngressReconciler) reconcileDNSEntries(ctx context.Context, ingress net
 		},
 	}
 	_, err := ctrl.CreateOrUpdate(ctx, r.Client, dnsEndpoint, func() error {
-		r.newDnsEndpoint(ctx, dnsEndpoint, ingress)
-		return nil
+		return r.mutateDNSEndpoint(ctx, dnsEndpoint, ingress)
 	})
 	return err
 }
@@ -376,10 +474,14 @@ func (r *IngressReconciler) SetupWithManager(mgr ctrl.Manager, events chan event
 	endpointMapper := &endpointsMapper{
 		Client: r.Client,
 	}
+	ingressWeightMapper := &ingressWeightMapper{
+		Client: r.Client,
+	}
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(ing).
 		Watches(&v1.Endpoints{}, handler.EnqueueRequestsFromMapFunc(endpointMapper.mapToIngressRequests)).
+		Watches(&ingressv1beta1.ClusterIngressServiceDNSWeight{}, handler.EnqueueRequestsFromMapFunc(ingressWeightMapper.mapToIngressRequests)).
 		Owns(&externaldnsk8siov1alpha1.DNSEndpoint{}).
 		WatchesRawSource(source.Channel[client.Object](events, &handler.EnqueueRequestForObject{})).
 		Complete(r)

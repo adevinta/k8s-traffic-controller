@@ -55,9 +55,32 @@ func MockIngress(mutators ...func(*netv1.Ingress)) *netv1.Ingress {
 	return &ing
 }
 
+func FromIngress(original *netv1.Ingress) func(*netv1.Ingress) {
+	return func(copy *netv1.Ingress) {
+		original.DeepCopyInto(copy)
+	}
+}
+
+func WithIngressClass(ingressClass string) func(*netv1.Ingress) {
+	return func(ing *netv1.Ingress) {
+		ing.Spec.IngressClassName = &ingressClass
+	}
+}
+
 func IngressWithRules(rules ...netv1.IngressRule) func(*netv1.Ingress) {
 	return func(ing *netv1.Ingress) {
 		ing.Spec.Rules = rules
+	}
+}
+
+func IngressWithLoadBalancerNames(names ...string) func(*netv1.Ingress) {
+	return func(ing *netv1.Ingress) {
+		ing.Status.LoadBalancer.Ingress = nil
+		for _, name := range names {
+			ing.Status.LoadBalancer.Ingress = append(ing.Status.LoadBalancer.Ingress, netv1.IngressLoadBalancerIngress{
+				Hostname: name,
+			})
+		}
 	}
 }
 

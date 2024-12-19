@@ -1,0 +1,176 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.4
+  name: clusteringressservicednsweights.ingress.adevinta.com
+spec:
+  group: ingress.adevinta.com
+  names:
+    kind: ClusterIngressServiceDNSWeight
+    listKind: ClusterIngressServiceDNSWeightList
+    plural: clusteringressservicednsweights
+    singular: clusteringressservicednsweight
+  scope: Cluster
+  versions:
+  - name: v1beta1
+    schema:
+      openAPIV3Schema:
+        description: ClusterIngressServiceDNSWeight is what defines the links between
+          k8s services and ingresses
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: IngressServiceDNSWeightSpec defines the desired state of
+              IngressServiceDNSWeight
+            properties:
+              identifier:
+                type: string
+              ingressSelector:
+                description: IngressSelector defines the ingress selector in specific
+                  namespaces
+                properties:
+                  classes:
+                    description: |-
+                      Classes is the list of classes that the ingress must have
+                      It must contain at least one class
+                    items:
+                      type: string
+                    type: array
+                  matchExpressions:
+                    description: matchExpressions is a list of label selector requirements.
+                      The requirements are ANDed.
+                    items:
+                      description: |-
+                        A label selector requirement is a selector that contains values, a key, and an operator that
+                        relates the key and values.
+                      properties:
+                        key:
+                          description: key is the label key that the selector applies
+                            to.
+                          type: string
+                        operator:
+                          description: |-
+                            operator represents a key's relationship to a set of values.
+                            Valid operators are In, NotIn, Exists and DoesNotExist.
+                          type: string
+                        values:
+                          description: |-
+                            values is an array of string values. If the operator is In or NotIn,
+                            the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                            the values array must be empty. This array is replaced during a strategic
+                            merge patch.
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                      required:
+                      - key
+                      - operator
+                      type: object
+                    type: array
+                    x-kubernetes-list-type: atomic
+                  matchLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                      map is equivalent to an element of matchExpressions, whose key field is "key", the
+                      operator is "In", and the values array contains only "value". The requirements are ANDed.
+                    type: object
+                  namespaces:
+                    description: |-
+                      Namespaces is the list of namespaces where the ingress selector will be applied
+                      If not provided, all namespaces will be considered
+                    items:
+                      type: string
+                    type: array
+                required:
+                - classes
+                type: object
+                x-kubernetes-map-type: atomic
+              serviceSelector:
+                description: ServiceSelector defines the service selector in a specific
+                  namespace
+                properties:
+                  matchExpressions:
+                    description: matchExpressions is a list of label selector requirements.
+                      The requirements are ANDed.
+                    items:
+                      description: |-
+                        A label selector requirement is a selector that contains values, a key, and an operator that
+                        relates the key and values.
+                      properties:
+                        key:
+                          description: key is the label key that the selector applies
+                            to.
+                          type: string
+                        operator:
+                          description: |-
+                            operator represents a key's relationship to a set of values.
+                            Valid operators are In, NotIn, Exists and DoesNotExist.
+                          type: string
+                        values:
+                          description: |-
+                            values is an array of string values. If the operator is In or NotIn,
+                            the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                            the values array must be empty. This array is replaced during a strategic
+                            merge patch.
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                      required:
+                      - key
+                      - operator
+                      type: object
+                    type: array
+                    x-kubernetes-list-type: atomic
+                  matchLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                      map is equivalent to an element of matchExpressions, whose key field is "key", the
+                      operator is "In", and the values array contains only "value". The requirements are ANDed.
+                    type: object
+                  namespace:
+                    type: string
+                required:
+                - namespace
+                type: object
+                x-kubernetes-map-type: atomic
+              weight:
+                default: 0
+                description: Weight is the weight of the service
+                maximum: 100
+                minimum: 0
+                type: integer
+            required:
+            - identifier
+            - ingressSelector
+            - serviceSelector
+            - weight
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
