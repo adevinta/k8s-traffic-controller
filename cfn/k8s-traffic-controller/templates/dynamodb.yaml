@@ -2,24 +2,15 @@ Resources:
     DDBTable:
       Type: AWS::DynamoDB::Table
       Properties:
-        TableName: "k8s-traffic-controller",
+        TableName: k8s-traffic-controller
         AttributeDefinitions:
           -
             AttributeName: "ClusterName"
             AttributeType: "S"
-          -
-            AttributeName: "CurrentWeight"
-            AttributeType: "N"
-          -
-            AttributeName: "DesiredWeight"
-            AttributeType: "N"
         KeySchema:
           -
             AttributeName: "ClusterName"
             KeyType: "HASH"
-          -
-            AttributeName: "ClusterName"
-            KeyType: "RANGE"
         ProvisionedThroughput:
           ReadCapacityUnits: 5
           WriteCapacityUnits: 5
