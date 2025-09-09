@@ -107,7 +107,7 @@ func TestTrafficControllerController(t *testing.T) {
 	k8sClient, err := client.New(cfg, client.Options{Scheme: scheme})
 	require.NoError(t, err)
 
-	installCRD(ctx, t, k8sClient, "https://raw.githubusercontent.com/kubernetes-sigs/external-dns/refs/heads/master/docs/contributing/crd-source/crd-manifest.yaml")
+	installCRD(ctx, t, k8sClient, "https://raw.githubusercontent.com/kubernetes-sigs/external-dns/refs/heads/master/config/crd/standard/dnsendpoints.externaldns.k8s.io.yaml")
 	installControllerChart(ctx, t, k8sClient, "--set", "devMode=true")
 	deleteControllerDeployment(t, k8sClient)
 
